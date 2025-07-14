@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tsdm"
+version = "0.1.0"
+description = "A modular library for benchmarking sequential decision-making models in temporal environments."
+authors = [
+    { name = "Mathis Jander", email = "mathis.jander@utwente.nl" }
+]
+readme = "README.md"
+requires-python = ">=3.8"
+keywords = ["sequential decision-making", "time series", "benchmarking", "evaluation", "agents", "games"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[tool.setuptools]
+package-dir = { "" = "tsdm" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "flake8",
+    "mypy",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/MSCA-DN-Digital-Finance/tsdm"
