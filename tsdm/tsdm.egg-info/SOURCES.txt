@@ -1,0 +1,9 @@
+LICENSE
+README.md
+pyproject.toml
+test/test_agents.py
+tsdm/tsdm.egg-info/PKG-INFO
+tsdm/tsdm.egg-info/SOURCES.txt
+tsdm/tsdm.egg-info/dependency_links.txt
+tsdm/tsdm.egg-info/requires.txt
+tsdm/tsdm.egg-info/top_level.txt

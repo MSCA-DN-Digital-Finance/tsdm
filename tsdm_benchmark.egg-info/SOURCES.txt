@@ -1,0 +1,13 @@
+LICENSE
+README.md
+pyproject.toml
+test/__init__.py
+test/test_agents.py
+tsdm/__init__.py
+tsdm/agents.py
+tsdm/games.py
+tsdm_benchmark.egg-info/PKG-INFO
+tsdm_benchmark.egg-info/SOURCES.txt
+tsdm_benchmark.egg-info/dependency_links.txt
+tsdm_benchmark.egg-info/requires.txt
+tsdm_benchmark.egg-info/top_level.txt
