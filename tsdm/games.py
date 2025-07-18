@@ -13,7 +13,7 @@ class BettingGame:
         generator: An object with a `generate_value()` method that produces the next value.
         observer: An agent with `observe()` and `place_bet()` methods.
         total_movements: Total number of time steps to play.
-        previous_movement: The last generated value (starts at `start_value`).
+        last_value: The last generated value (starts at `start_value`).
         reward: Cumulative reward (increases or decreases based on prediction accuracy).
         reward_development: Array tracking cumulative reward over time.
         bet_log: History of (step, value, bet, reward) tuples for analysis.
@@ -23,7 +23,7 @@ class BettingGame:
         self.generator = generator
         self.observer = observer
         self.total_movements = total_movements
-        self.previous_movement = start_value
+        self.last_value = start_value
         self.reward = 0
         self.reward_development = np.array([])
         self.bet_log = []  # Stores (step, value, bet, reward)
@@ -36,11 +36,11 @@ class BettingGame:
         - Calculates the received reward (+1 or -1).
         - Updates cumulative reward and logs the result.
         """
-        value = self.generator.generate_value()
+        value = self.generator.generate_value(self.last_value)
         bet = self.observer.place_bet()
 
         # Determine if the bet is correct and assign reward
-        if (value > self.previous_movement and bet == 1) or (value < self.previous_movement and bet == 0):
+        if (value > self.last_value and bet == 1) or (value < self.last_value and bet == 0):
             received_reward = 1
         else:
             received_reward = -1
@@ -53,7 +53,7 @@ class BettingGame:
         self.bet_log.append((step, value, bet, received_reward))
 
         # Update for next round
-        self.previous_movement = value
+        self.last_value = value
 
     def play_game(self):
         """
@@ -62,7 +62,7 @@ class BettingGame:
         Returns the final cumulative reward.
         """
         for step in range(1, self.total_movements + 1):
-            self.observer.observe(self.previous_movement)
+            self.observer.observe(self.last_value)
             self.play_turn(step)
 
         return self.reward

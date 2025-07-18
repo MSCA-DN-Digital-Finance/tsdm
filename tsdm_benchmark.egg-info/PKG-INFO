@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: tsdm-benchmark
-Version: 0.2.0
+Version: 0.2.1
 Summary: A modular library for benchmarking sequential decision-making models in temporal environments.
 Author-email: Mathis Jander <mathis.jander@utwente.nl>
 License: MIT
