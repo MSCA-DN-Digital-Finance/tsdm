@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: tsdm-benchmark
-Version: 0.1.0
+Version: 0.2.0
 Summary: A modular library for benchmarking sequential decision-making models in temporal environments.
 Author-email: Mathis Jander <mathis.jander@utwente.nl>
 License: MIT
@@ -16,14 +16,76 @@ License-File: LICENSE
 Requires-Dist: numpy
 Dynamic: license-file
 
-# TSDM — Time Series Decision-Making Benchmark
+# TSDM — Time Series Decision-Making Benchmark (Alpha)
 
-**TSDM** provides ground-truth-controlled environments ("games") for evaluating sequential decision-making agents in temporal-only settings.
+**TSDM** is a lightweight benchmarking framework for evaluating agents in sequential decision-making tasks based on temporal data.
 
-Use TSDM to benchmark heuristic, statistical, or learning-based agents on standardized tasks driven by synthetic or real-world time series.
+It provides a clean, Gym-free setup with controlled environments and standardized agents — ideal for systematic experimentation in **time-series-only decision-making**.
 
+---
 
-Currently under construction...
+## 📝 Overview
+
+TSDM focuses on agents that observe a single temporal value at each step and must sequentially decide on a binary action (betting up or down).  
+Performance is tracked through cumulative rewards based on correct or incorrect predictions.
+
+---
+
+## 📦 Installation
+
+### From PyPI (Recommended)
+
+```bash
+pip install tsdm-benchmark
+```
+
+## 📦 Current Components
+
+### ✅ Core Agent Classes (`agents.py`)
+
+- **Abstract Base Class**
+  - `Agent` — defines the interface for all agents (`observe()`, `place_bet()`, `reset()`)
+
+- **Baseline Heuristic Agents**
+  - `AlwaysUpAgent` — Always predicts "up"
+  - `RepeatLastMovementAgent` — Predicts based on last movement direction
+  - `FrequencyBasedMajorityAgent` — Predicts based on majority of past movement directions
+
+- **Statistical Agents**
+  - `StaticMeanReversionAgent` — Bets on reversion to historical mean
+  - `DynamicMeanReversionAgent` — Bets on mean reversion within a rolling time window
+
+- **Learning Agents**
+  - `SGDClassifierAgent` — Online learning using scikit-learn’s `SGDClassifier`
+  - `DQNAgent` — Deep Q-Learning agent with experience replay (PyTorch-based)
+
+---
+
+### ✅ Sequential Betting Game (`games.py`)
+
+- Simulates a sequential game between a **time series generator** and an **agent**
+- Handles:
+  - Time series generation (requires a generator with `.generate_value()`)
+  - Agent action sampling via `.place_bet()`
+  - Reward assignment (+1 correct / -1 incorrect)
+  - Step logging and cumulative reward tracking
+
+---
+
+## 🎲 Example Usage
+
+```python
+from tsdm.agents import AlwaysUpAgent
+from tsdm.betting_game import BettingGame
+from tsg.generators import LinearTrendGenerator  # Assuming you have tsg-lib
+
+agent = AlwaysUpAgent()
+generator = LinearTrendGenerator(slope=0.1)
+game = BettingGame(generator=generator, observer=agent, total_movements=1000)
+
+final_reward = game.play_game()
+print(f"Final cumulative reward: {final_reward}")
+```
 
 
 ## Acknowledgments
