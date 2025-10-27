@@ -1,7 +1,8 @@
 import numpy as np
+from warnings import warn
 
 
-class BettingGame:
+class PredictionTask:
     """
     Simulates a sequential betting game between a generator and an observer (agent).
 
@@ -19,9 +20,9 @@ class BettingGame:
         bet_log: History of (step, value, bet, reward) tuples for analysis.
     """
 
-    def __init__(self, generator, observer, total_movements, start_value=0):
+    def __init__(self, generator, agent, total_movements, start_value=0):
         self.generator = generator
-        self.observer = observer
+        self.agent = agent
         self.total_movements = total_movements
         self.last_value = start_value
         self.reward = 0
@@ -32,12 +33,12 @@ class BettingGame:
         """
         Plays a single turn of the game:
         - Generates a new value using the generator's `generate_value()`.
-        - Observer places a bet (1 = up, 0 = down).
+        - Agent places a bet (1 = up, 0 = down).
         - Calculates the received reward (+1 or -1).
         - Updates cumulative reward and logs the result.
         """
         value = self.generator.generate_value(self.last_value)
-        bet = self.observer.place_bet()
+        bet = self.agent.place_bet()
 
         # Determine if the bet is correct and assign reward
         if (value > self.last_value and bet == 1) or (value < self.last_value and bet == 0):
@@ -62,7 +63,23 @@ class BettingGame:
         Returns the final cumulative reward.
         """
         for step in range(1, self.total_movements + 1):
-            self.observer.observe(self.last_value)
+            self.agent.observe(self.last_value)
             self.play_turn(step)
 
         return self.reward
+    
+
+class BettingGame(PredictionTask):
+    """
+    DEPRECATED: Use `PredictionTask` instead.
+    Will be removed in version 0.3.0.
+    """
+
+    def __init__(self, *args, **kwargs):
+        warn(
+            "BettingGame is deprecated and will be removed in v0.3.0. "
+            "Use PredictionTask instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        super().__init__(*args, **kwargs)

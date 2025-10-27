@@ -1,2 +1,2 @@
 from .agents import *
-from .games import *
+from .tasks import *

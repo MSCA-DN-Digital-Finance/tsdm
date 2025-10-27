@@ -43,7 +43,7 @@ pip install tsdm-benchmark
 
 ---
 
-### ✅ Sequential Betting Game (`games.py`)
+### ✅ Prediction Task (`tasks.py`)
 
 - Simulates a sequential game between a **time series generator** and an **agent**
 - Handles:
@@ -58,12 +58,12 @@ pip install tsdm-benchmark
 
 ```python
 from tsdm.agents import AlwaysUpAgent
-from tsdm.betting_game import BettingGame
+from tsdm.tasks import PredictionTask
 from tsg.generators import LinearTrendGenerator  # Assuming you have tsg-lib
 
 agent = AlwaysUpAgent()
 generator = LinearTrendGenerator(slope=0.1)
-game = BettingGame(generator=generator, observer=agent, total_movements=1000)
+game = PredictionTask(generator=generator, observer=agent, total_movements=1000)
 
 final_reward = game.play_game()
 print(f"Final cumulative reward: {final_reward}")
