@@ -59,11 +59,11 @@ pip install tsdm-benchmark
 ```python
 from tsdm.agents import AlwaysUpAgent
 from tsdm.tasks import PredictionTask
-from tsg.generators import LinearTrendGenerator  # Assuming you have tsg-lib
+from tsg.generators import LinearTrendGenerator  # Assuming you have installed tsg-lib
 
 agent = AlwaysUpAgent()
 generator = LinearTrendGenerator(slope=0.1)
-game = PredictionTask(generator=generator, observer=agent, total_movements=1000)
+game = PredictionTask(generator=generator, agent=agent, total_movements=1000)
 
 final_reward = game.play_game()
 print(f"Final cumulative reward: {final_reward}")

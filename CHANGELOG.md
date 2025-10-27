@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## v0.2.3 — 2025-10-27
+### Changed
+- Updated the README to replace **`observer`** with **`agent`** for consistent terminology across code, documentation, and user-facing examples.
+
+---
+
 ## v0.2.2 — 2025-10-27
 ### Changed
 - Renamed core environment class from **`BettingGame`** to **`PredictionTask`** for clearer semantic meaning.
