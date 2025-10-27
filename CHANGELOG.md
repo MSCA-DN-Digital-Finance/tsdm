@@ -1,0 +1,64 @@
+# Changelog
+All notable changes to this project will be documented in this file.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+---
+
+## Unreleased
+*Add upcoming changes here before creating the next release.*
+
+### Added
+- (none yet)
+
+### Changed
+- (none yet)
+
+### Deprecated
+- (none yet)
+
+### Removed
+- (none yet)
+
+### Fixed
+- (none yet)
+
+---
+
+## v0.2.2 — 2025-10-27
+### Changed
+- Renamed core environment class from **`BettingGame`** to **`PredictionTask`** for clearer semantic meaning.
+- Updated internal references and documentation to use `PredictionTask` consistently.
+
+### Deprecated
+- **`BettingGame`** is now deprecated and will be removed in **v0.3.0**.
+- Instantiating `BettingGame` emits a `DeprecationWarning` and forwards all arguments to `PredictionTask`.
+
+```python
+# Old (deprecated)
+game = BettingGame(generator, observer, total_movements=100)
+
+# New (preferred)
+game = PredictionTask(generator, observer, total_movements=100)
+```
+### Added
+- Comprehensive test suite for `PredictionTask`, including:
+  - Parametrized reward behavior tests for rising/falling series and agent prediction correctness.
+  - Verification that agents observe the previous value before placing a bet (correct interaction order).
+  - Consistency checks for `last_value` updates after each step.
+  - Validation of logging behavior:
+    - `reward_development` tracks cumulative reward correctly.
+    - `bet_log` stores `(step, value, bet, received_reward)` tuples in correct format.
+  - Edge case handling:
+    - `total_movements = 0` (no steps performed).
+    - Flat/no-change generators (ties penalize the agent under current rules).
+    - Custom `start_value` forwarding.
+  - Deprecation wrapper tests ensuring:
+    - Instantiating `BettingGame` raises a `DeprecationWarning`.
+    - The wrapper returns a `PredictionTask` instance.
+    - Parameters (e.g., `start_value`) are forwarded correctly.
+
+### Test Summary
+
+27 passed in 3.57s.
