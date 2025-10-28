@@ -21,6 +21,8 @@ Performance is tracked through cumulative rewards based on correct or incorrect 
 pip install tsdm-benchmark
 ```
 
+---
+
 ## 📦 Current Components
 
 ### ✅ Core Agent Classes (`agents.py`)
@@ -50,7 +52,6 @@ Each task models an interaction between:
 - **Agent**: observes values and chooses an action  
 - **Task**: applies update mechanics and logs outcomes
 
----
 
 #### **Prediction Task**
 
@@ -67,7 +68,7 @@ A binary directional decision task.
 - Cumulative reward and full step-by-step logs are recorded
 - Useful for evaluating pattern recognition, signal prediction, and directional inference
 
----
+
 
 #### **Allocation Task**
 
@@ -86,6 +87,35 @@ A multi-source allocation task.
 - Full step logging includes values, allocations, relative changes, turnover, and budget trajectory
 - Useful for adaptive weighting, meta-learning, portfolio-style allocation, and combining experts
 
+
+#### **Execution Task**
+
+A finite-inventory execution and liquidation task.
+
+**Process**
+- Multiple generators evolve in parallel, each producing their own value sequence over time.
+- The agent starts with a fixed **inventory** (e.g., units of an asset) that must be fully executed by the end of the task.
+- At each step, the agent observes the current values and chooses **absolute execution amounts** for each generator (non-negative real values).
+- Executing inventory incurs a **cost**, determined by the *next-step* values generated after the action is chosen.
+- If any inventory remains on the **final step**, it is automatically **liquidated evenly** across generators.
+
+**Characteristics**
+- Multiple generators with evolving values
+- Agent outputs *absolute quantities* (not proportions)
+- Strict finite-inventory constraint: inventory only decreases
+- Execution cost accumulates over time based on future (t+1) values
+- Full logs include:
+  - pre-execution values
+  - post-execution next-step values
+  - execution vector per step
+  - remaining inventory trajectory
+  - step-by-step and cumulative cost
+- Useful for studying:
+  - optimal liquidation timing
+  - execution strategies under uncertainty
+  - anticipation of future value movement
+  - allocation vs. patience trade-offs
+
 ---
 
 ## 🎲 Example Usage
@@ -102,13 +132,17 @@ game = PredictionTask(generator=generator, agent=agent, total_movements=1000)
 final_reward = game.play_game()
 print(f"Final cumulative reward: {final_reward}")
 ```
+More detailed demonstrations for each task can be found in the `examples` folder.
 
+---
 
 ## Acknowledgments
 
 Funded by the European Union. Views and opinions expressed are however those of the author(s) only and do not necessarily reflect those of the European Union or European Research Executive Agency (REA). Neither the European Union nor the granting authority can be held responsible for them.
 
 ![EU Logo](images/eu_funded_logo.jpg)
+
+---
 
 ## License
 

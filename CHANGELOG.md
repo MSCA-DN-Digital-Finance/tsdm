@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - (none yet)
 
 ---
+## v0.2.5 — 2025-10-28
+
+### Added
+- Introduced the **Execution Task** environment for evaluating agents under finite-inventory execution settings.
+- Added **test suite** covering execution task.
+- Added **examples** demonstrating basic usage of prediction, allocation and execution task.
+
+---
 
 ## v0.2.4 — 2025-10-28
 

@@ -299,3 +299,151 @@ class AllocationTask(Task):
         for step in range(1, self.total_movements + 1):
             self.play_turn(step)
         return self.budget
+
+
+
+# ========================================================================
+# Execution Task
+# ========================================================================
+
+import numpy as np
+from typing import Any, Sequence, List, Optional
+
+class ExecutionTask(Task):
+    """
+    Execution Task.
+
+    Goal
+    ----
+    Execute an initial inventory Q over T steps across K generators.
+    The agent chooses absolute order sizes x_t >= 0 per generator each step.
+    We minimize execution cost; `play_game()` returns NEGATIVE total cost (higher is better).
+    Remaining inventory is forced to zero at the final step.
+
+    Agent API
+    ---------
+    observe(state) where state is:
+        {
+          "values": np.ndarray (K,),          # current prices before acting
+          "remaining_inventory": float,       # q_t
+          "remaining_time": int,              # steps left including this one
+          "cost_cum": float,                  # cumulative cost so far
+        }
+    place_bet() -> np.ndarray (K,) of non-negative order sizes (absolute units).
+
+    Logging (per step) — appended to self.log:
+        {
+          "t": int,                           # 1-based external step index
+          "values_prev": np.ndarray (K,),
+          "values": np.ndarray (K,),          # prices used for execution this step
+          "x": np.ndarray (K,),               # executed sizes this step
+          "q_remaining": float,               # remaining after execution
+          "step_cost": float,                 # cost this step
+          "cost_cum": float,                  # cumulative cost so far
+        }
+    """
+
+    def __init__(
+        self,
+        generators: Sequence[Any],            # K venues (each has .generate_value(last_value))
+        agent: Any,
+        total_movements: int,                 # T steps (maximum)
+        start_values: Sequence[float],        # prices at t=0 (length K)
+        initial_inventory: float = 1.0,       # Q
+    ):
+        if len(generators) < 1:
+            raise ValueError("ExecutionTask requires at least one generator (venue).")
+        super().__init__(generator=generators, agent=agent, total_movements=total_movements)
+
+        self.generators: List[Any] = list(generators)
+        self.K: int = len(self.generators)
+
+        if len(start_values) != self.K:
+            raise ValueError("start_values length must match number of generators.")
+        self.values = np.asarray(start_values, dtype=float)
+        self.values_prev = self.values.copy()
+
+        self.initial_inventory = float(initial_inventory)
+        self.q = self.initial_inventory
+
+        self.cost_cum = 0.0
+        self.cost_development: List[float] = [self.cost_cum]
+        self.inventory_development: List[float] = [self.q]
+        # self.log is initialized by Task
+
+    # ---------- one step ----------
+    def play_turn(self, step: int) -> None:
+        # 1) Agent observes current state BEFORE acting
+        remaining_time = self.total_movements - (step - 1)
+        state = {
+            "values": self.values.copy(),                  # current values across generators
+            "remaining_inventory": float(self.q),          # scalar remaining resource
+            "remaining_time": int(remaining_time),         # steps left incl. this one
+            "cost_cum": float(self.cost_cum),              # cumulative *execution cost* so far
+        }
+        if hasattr(self.agent, "observe"):
+            self.agent.observe(state)
+
+        # 2) Agent proposes absolute order sizes (non-negative). Enforce feasibility.
+        K = len(self.generators)
+        raw = self.agent.place_bet() if hasattr(self.agent, "place_bet") else np.zeros(K, dtype=float)
+        x = np.asarray(raw, dtype=float).reshape(-1)
+        if x.size != K:
+            x = np.zeros(K, dtype=float)
+        x = np.clip(x, 0.0, None)
+
+        remain = float(self.q)
+        x_sum = float(x.sum())
+
+        if step < self.total_movements:
+            # Cap to remaining on intermediate steps
+            if x_sum > remain and x_sum > 0.0:
+                x = x * (remain / x_sum)
+        else:
+            # Final step: force liquidation if anything remains
+            if remain > 0.0:
+                if x_sum > 0.0:
+                    x = x * (remain / x_sum)
+                else:
+                    # Neutral fallback: split remaining evenly
+                    x = np.full(K, remain / K, dtype=float)
+            else:
+                x = np.zeros(K, dtype=float)
+
+        # 3) Advance values (produce next-step values)
+        new_values = np.array(
+            [gen.generate_value(self.values[i]) for i, gen in enumerate(self.generators)],
+            dtype=float
+        )
+
+        # 4) Execution cost ONLY (cash spent/consumed this step): next values • x
+        step_cost = float(np.dot(new_values, x)) #  Agent acts on t, executes at t+1.
+        self.cost_cum += step_cost  # cumulative execution cost
+
+        # 5) Update inventory and value state
+        self.q = max(0.0, self.q - float(x.sum()))
+        values_prev = self.values
+        self.values = new_values
+
+        # 6) Log step
+        self.log.append({
+            "t": step,
+            "values_prev": values_prev.copy(),   # pre-trade values used for pricing this step
+            "values": new_values.copy(),         # next values after generators advance
+            "x": x.copy(),                       # executed vector this step
+            "q_remaining": float(self.q),        # remaining after execution
+            "step_cost": step_cost,              # execution cost this step (cash)
+            "cost_cum": float(self.cost_cum),    # cumulative execution cost
+        })
+        self.cost_development.append(self.cost_cum)
+        self.inventory_development.append(self.q)
+
+
+    # ---------- full run ----------
+    def play_game(self) -> float:
+        for step in range(1, self.total_movements + 1):
+            if self.q <= 1e-12:  # fully executed
+                break
+            self.play_turn(step)
+        # Return negative cost so higher is better (reward-style)
+        return -self.cost_cum

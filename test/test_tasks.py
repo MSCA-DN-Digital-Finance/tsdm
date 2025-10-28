@@ -860,7 +860,7 @@ def test_allocation_task_requires_two_generators_raises():
 
     with pytest.raises(ValueError):
         AllocationTask(
-            generators=[UpGen()],   # ❌ only one generator — not allowed
+            generators=[UpGen()],   #  only one generator — not allowed
             agent=agent,
             total_movements=1,
             start_values=np.array([10.0]),
@@ -898,3 +898,336 @@ def test_allocation_task_projection_edge_all_zero_vector_becomes_equal_weights()
 
 
     
+# ------------------------------------------------------------------------
+# SECTION 11 — ExecutionTask: Helpers (Generators, Agents, Factory)
+# ------------------------------------------------------------------------
+
+# We reuse UpGen and FlatGen from above where helpful:
+# - UpGen: values increase by +1 each step (per index)
+# - FlatGen: values stay the same (no change across time)
+
+class ConstGen:
+    """Generator that always returns a constant scalar value (ignores `last`)."""
+    def __init__(self, value: float):
+        self.value = float(value)
+    def generate_value(self, last):
+        return self.value
+
+
+class FractionExecutorAgent:
+    """
+    Executes a fixed fraction of the remaining scalar resource each step
+    but split evenly across K generators (for simplicity).
+    For K=1, it just returns [fraction * remaining].
+    """
+    def __init__(self, fraction: float, k: int):
+        self.fraction = float(fraction)
+        self.k = int(k)
+        self.observed = []
+    def observe(self, state):
+        # state is a dict with keys: values, remaining_inventory, remaining_time, cost_cum
+        self.observed.append(state)
+    def place_bet(self):
+        remain = self.observed[-1]["remaining_inventory"]
+        per = (self.fraction * remain) / self.k if self.k > 0 else 0.0
+        return np.full(self.k, per, dtype=float)
+
+
+class AllAtOnceAgent:
+    """Consumes the entire remaining scalar resource immediately, split evenly across K."""
+    def __init__(self, k: int):
+        self.k = int(k)
+    def observe(self, state): pass
+    def place_bet(self):
+        # Remaining is read from last observed state:
+        # This agent assumes the task provides it; if not, it's a no-op.
+        # We therefore implement a safe default via a closure pattern in tests.
+        raise RuntimeError("AllAtOnceAgent requires a wrapper to inject remaining.")
+
+
+class OverConsumeAgent:
+    """Proposes absurdly large nonnegative quantities (to test projection to remaining)."""
+    def __init__(self, k: int, scale: float = 10.0):
+        self.k = int(k)
+        self.scale = float(scale)
+    def observe(self, state): self._last_state = state
+    def place_bet(self):
+        # Propose a vector much larger than remaining to force projection
+        remain = self._last_state["remaining_inventory"]
+        return np.full(self.k, self.scale * remain, dtype=float)
+
+
+def _exec_task(
+    generators,
+    agent,
+    steps,
+    start_vals,
+    initial_inventory=1.0,
+):
+    """
+    Helper to construct an ExecutionTask with common defaults.
+    - generators: list of K generators
+    - agent: execution agent
+    - steps: total_movements (horizon)
+    - start_vals: np.array of length K
+    - initial_inventory: initial scalar inventory/resource
+
+    """
+    return ExecutionTask(
+        generators=generators,
+        agent=agent,
+        total_movements=steps,
+        start_values=np.array(start_vals, dtype=float),
+        initial_inventory=float(initial_inventory)
+        )
+
+
+# ------------------------------------------------------------------------
+# SECTION 12 — ExecutionTask: Observation & State
+# ------------------------------------------------------------------------
+
+def test_execution_task_observe_includes_remaining_time_and_inventory():
+    """
+    The agent must observe the state BEFORE acting each step, including:
+      - values (vector across K generators)
+      - remaining_inventory (scalar)
+      - remaining_time (steps left including this one)
+      - cost_cum (cumulative cost so far)
+
+    We verify the presence and evolution of these fields across steps.
+    """
+    K = 2
+    gens = [UpGen(), UpGen()]                    # each value increments by +1 per step
+    start = np.array([10.0, 20.0], dtype=float)  # t=0 values
+    agent = FractionExecutorAgent(fraction=0.2, k=K)
+    task = _exec_task(gens, agent, steps=3, start_vals=start, initial_inventory=1.0)
+
+    task.play_game()
+
+    # 3 steps → 3 observations
+    assert len(agent.observed) == 3, "Agent must receive one observation per step"
+
+    # remaining_time should count down: 3, 2, 1
+    rem_times = [s["remaining_time"] for s in agent.observed]
+    assert rem_times == [3, 2, 1], f"remaining_time should decrement; got {rem_times}"
+
+    # values should be observed BEFORE update each step:
+    # Step 1 observes start
+    # Step 2 observes start + 1
+    # Step 3 observes start + 2
+    expected_values = [start, start + 1.0, start + 2.0]
+    for got, exp in zip([s["values"] for s in agent.observed], expected_values):
+        assert np.allclose(got, exp), f"Observed values {got} != expected {exp}"
+
+    # remaining_inventory is positive and non-increasing
+    rems = [s["remaining_inventory"] for s in agent.observed]
+    assert all(r >= 0 for r in rems), "remaining_inventory must be non-negative"
+    assert all(rems[i+1] <= rems[i] for i in range(len(rems)-1)), \
+        f"remaining_inventory must not increase; got {rems}"
+
+
+# ------------------------------------------------------------------------
+# SECTION 13 — ExecutionTask: Core Mechanics
+# ------------------------------------------------------------------------
+
+def test_execution_task_stops_when_fully_consumed():
+    """
+    If the agent consumes the entire remaining resource at the first step,
+    the task should:
+      - log exactly one step,
+      - set remaining to 0,
+      - stop early.
+    """
+    K = 2
+    gens = [ConstGen(1.0), ConstGen(1.0)]
+    start = np.array([1.0, 1.0])
+
+    # Wrap AllAtOnceAgent to inject "remaining" into its output evenly across K.
+    class AllAtOnceWrapper(AllAtOnceAgent):
+        def __init__(self, k): super().__init__(k); self._remain = None
+        def observe(self, state): self._remain = state["remaining_inventory"]
+        def place_bet(self): return np.full(self.k, self._remain / self.k)
+
+    agent = AllAtOnceWrapper(k=K)
+    task = _exec_task(gens, agent, steps=10, start_vals=start, initial_inventory=5.0)
+
+    reward = task.play_game()
+    # cost is negative reward, but we only care about termination behavior here
+    assert len(task.log) == 1, "Should execute only one step when fully consumed at once"
+    assert task.log[0]["q_remaining"] == 0.0, "Remaining must be zero after full consumption"
+
+
+def test_execution_task_projects_overconsumption_to_remaining():
+    """
+    The environment must cap total proposed consumption to the remaining resource.
+    OverConsumeAgent proposes a vector much larger than remaining. The task should:
+      - scale it down so sum(x) == previous remaining
+      - set new remaining to 0
+    """
+    K = 3
+    gens = [ConstGen(0.0) for _ in range(K)]  # zero value ⇒ price_diff cost term = 0
+    start = np.zeros(K, dtype=float)
+    agent = OverConsumeAgent(k=K, scale=10.0)
+    task = _exec_task(gens, agent, steps=1, start_vals=start, initial_inventory=2.5)
+
+    task.play_game()
+    x = task.log[0]["x"]
+    assert np.isclose(x.sum(), 2.5), "Total executed must equal previous remaining when overproposed"
+    assert task.log[0]["q_remaining"] == 0.0, "Remaining must be zero after capping to remaining"
+
+
+def test_execution_task_cost_uses_next_values():
+    """
+    With the updated execution logic, the step cost is computed as:
+        step_cost = dot(values_{t+1} (post-advance), x_t)
+
+    Since steps=1, this is the FINAL step, so any remaining inventory is
+    liquidated evenly regardless of the agent's suggestion.
+
+    Setup:
+      - K = 2 generators, both UpGen → each increases value by +1
+      - start values = [10.0, 20.0]
+      - next values = [11.0, 21.0]
+      - initial inventory Q = 1.0
+      - Final step → full liquidation evenly → x = [0.5, 0.5]
+
+    Expected step cost:
+      cost = 11.0 * 0.5 + 21.0 * 0.5 = 16.0
+
+
+    """
+    K = 2
+    gens = [UpGen(), UpGen()]
+    start = np.array([10.0, 20.0], dtype=float)
+
+    agent = FractionExecutorAgent(fraction=0.4, k=K)
+
+    task0 = _exec_task(gens, agent, steps=1, start_vals=start, initial_inventory=1.0)
+    reward0 = task0.play_game()
+    cost0 = -reward0
+    assert np.isclose(cost0, 16.0), f"Expected execution cost 16.0, got {cost0}"
+
+
+# ------------------------------------------------------------------------
+# SECTION 14 — ExecutionTask: Logging Schema & Consistency
+# ------------------------------------------------------------------------
+
+def test_execution_task_log_schema_and_consistency():
+    """
+    ExecutionTask must log one dictionary per step with keys:
+        - t: 1-based step index
+        - values_prev: ndarray (K,)
+        - values: ndarray (K,)
+        - x: ndarray (K,)   [executed non-negative vector]
+        - q_remaining: float
+        - step_cost: float
+        - cost_cum: float
+
+    We check:
+      * Correct key presence
+      * Non-negativity of x
+      * q_remaining decreases by sum(x)
+      * cost_cum is cumulative sum of step_cost
+      * Number of logs equals steps taken
+    """
+    K = 2
+    gens = [UpGen(), UpGen()]
+    start = np.array([1.0, 1.0], dtype=float)
+    agent = FractionExecutorAgent(fraction=0.5, k=K)
+
+    task = _exec_task(gens, agent, steps=3, start_vals=start, initial_inventory=1.0)
+    reward = task.play_game()
+
+    # logs exist (might be fewer than steps if fully consumed early)
+    assert len(task.log) >= 1, "Must log at least the first step"
+    keys_required = {"t", "values_prev", "values", "x", "q_remaining", "step_cost", "cost_cum"}
+
+    cost_sum = 0.0
+    q_prev = 1.0
+    for idx, rec in enumerate(task.log, start=1):
+        assert keys_required.issubset(rec.keys()), f"Missing keys in log record: {rec.keys()}"
+        x = rec["x"]
+        assert np.all(x >= 0.0), "Executed vector x must be non-negative"
+        # q_remaining decreases by sum(x) relative to the previous remaining
+        q_after = rec["q_remaining"]
+        assert np.isclose(q_after, q_prev - x.sum()), "Remaining must decrease by sum(x)"
+        q_prev = q_after
+
+        # cumulative cost matches sum of step_costs
+        cost_sum += rec["step_cost"]
+        assert np.isclose(rec["cost_cum"], cost_sum), "cost_cum must be cumulative sum of step_cost"
+
+        # sanity on indices
+        assert rec["t"] == idx, "t should be 1-based and incrementing"
+
+    # reward = - total cost
+    assert np.isclose(-reward, cost_sum), "Returned reward must equal negative cumulative cost"
+
+
+# ------------------------------------------------------------------------
+# SECTION 15 — ExecutionTask: Edge Cases
+# ------------------------------------------------------------------------
+
+def test_execution_task_zero_steps_no_logs_and_zero_cost():
+    """
+    With total_movements=0:
+      - No observations, no actions, no logs.
+      - Cost is zero; reward is zero.
+    """
+    K = 2
+    gens = [FlatGen(), FlatGen()]
+    start = np.array([5.0, 7.0], dtype=float)
+    agent = FractionExecutorAgent(fraction=0.5, k=K)
+    task = _exec_task(gens, agent, steps=0, start_vals=start, initial_inventory=3.0)
+
+    reward = task.play_game()
+    assert reward == 0.0, "Zero steps should yield zero cost (zero reward)"
+    assert len(task.log) == 0, "No steps ⇒ no logs"
+
+
+def test_execution_task_cost_with_flat_values_and_forced_liquidation():
+    """
+    With flat values (no change) and no running penalty:
+      - Step cost equals the executed cash that step: values · x.
+      - Using K=1, value=10.0 constant, Q=4.0, f=0.5, steps=2.
+      - The agent proposes:
+          * step 1: x = f * Q = 2.0
+          * step 2: x = f * (Q - 2.0) = 1.0 (proposal)
+        BUT on the final step the task forces liquidation of any remaining inventory,
+        so step 2 executes x = 2.0 (the remaining quantity), not 1.0.
+      - Hence costs:
+          * step 1: 10 * 2.0 = 20.0
+          * step 2: 10 * 2.0 = 20.0
+        Total = 40.0
+    """
+    K = 1
+    Q = 4.0
+    f = 0.5
+
+    gens = [FlatGen()]
+    start = np.array([10.0], dtype=float)
+
+    agent = FractionExecutorAgent(fraction=f, k=K)
+    task = _exec_task(gens, agent, steps=2, start_vals=start, initial_inventory=Q)
+    reward = task.play_game()
+    cost = -reward  # task returns negative cost as reward
+
+    # Totals
+    assert np.isclose(cost, 40.0), f"Execution cost mismatch: got {cost}, expected 40.0"
+
+    # Log sanity checks
+    assert len(task.log) == 2, "Should have exactly two step logs"
+
+    # Step 1: execute 2.0 at price 10.0 → cost 20.0, remaining 2.0
+    rec1 = task.log[0]
+    assert np.isclose(rec1["x"].sum(), 2.0), "Step 1 executed quantity should be 2.0"
+    assert np.isclose(rec1["step_cost"], 20.0), "Step 1 cost should be 20.0"
+    assert np.isclose(rec1["q_remaining"], 2.0), "Remaining after step 1 should be 2.0"
+    assert np.isclose(rec1["cost_cum"], 20.0), "Cumulative cost after step 1 should be 20.0"
+
+    # Step 2 (final): forced liquidation executes the remaining 2.0 at price 10.0 → cost 20.0, remaining 0.0
+    rec2 = task.log[1]
+    assert np.isclose(rec2["x"].sum(), 2.0), "Final step must liquidate remaining 2.0"
+    assert np.isclose(rec2["step_cost"], 20.0), "Step 2 cost should be 20.0"
+    assert np.isclose(rec2["q_remaining"], 0.0), "Remaining after final step should be 0.0"
+    assert np.isclose(rec2["cost_cum"], 40.0), "Cumulative cost after final step should be 40.0"
