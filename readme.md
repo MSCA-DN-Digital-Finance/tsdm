@@ -41,16 +41,50 @@ pip install tsdm-benchmark
   - `SGDClassifierAgent` — Online learning using scikit-learn’s `SGDClassifier`
   - `DQNAgent` — Deep Q-Learning agent with experience replay (PyTorch-based)
 
+### ✅ Task Environments (`tasks.py`)
+
+This module defines general sequential decision-making tasks.  
+Each task models an interaction between:
+
+- **Generators**: produce evolving values over time  
+- **Agent**: observes values and chooses an action  
+- **Task**: applies update mechanics and logs outcomes
+
 ---
 
-### ✅ Prediction Task (`tasks.py`)
+#### **Prediction Task**
 
-- Simulates a sequential game between a **time series generator** and an **agent**
-- Handles:
-  - Time series generation (requires a generator with `.generate_value()`)
-  - Agent action sampling via `.place_bet()`
-  - Reward assignment (+1 correct / -1 incorrect)
-  - Step logging and cumulative reward tracking
+A binary directional decision task.
+
+**Process**
+- A single generator produces a new value each step.
+- The agent observes the previous value and predicts whether the next value will go up or down.
+- The agent receives a positive reward for a correct prediction and a negative reward otherwise.
+
+**Characteristics**
+- Single evolving value stream
+- Binary decision output from the agent
+- Cumulative reward and full step-by-step logs are recorded
+- Useful for evaluating pattern recognition, signal prediction, and directional inference
+
+---
+
+#### **Allocation Task**
+
+A multi-source allocation task.
+
+**Process**
+- Multiple generators evolve in parallel, each producing their own value sequence.
+- The agent observes the vector of current values and returns a vector of allocations.
+- Allocations must be non-negative and sum to one (long-only simplex constraint).
+- The budget evolves according to relative changes in the values weighted by the allocations.
+- Optionally, changing allocations incurs turnover cost.
+
+**Characteristics**
+- Works with two or more generators simultaneously
+- Agent chooses a proportional distribution rather than a binary decision
+- Full step logging includes values, allocations, relative changes, turnover, and budget trajectory
+- Useful for adaptive weighting, meta-learning, portfolio-style allocation, and combining experts
 
 ---
 
